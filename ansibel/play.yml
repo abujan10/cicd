@@ -1,0 +1,113 @@
+---
+- name: "Docker cicd"
+  hosts: build
+  become: true
+  vars_files:
+    - docker.vars
+  vars:
+    repo_url: "https://github.com/abujan10/cicd.git"
+    repo_dest: "/var/repository/"
+    image_name: "abujan10/cdsite"
+  tasks:
+    
+    - name: " Docker Installation"
+      shell: 'amazon-linux-extras install docker -y'
+      args:
+       warn: no
+ 
+    - name: "Additional package "
+      yum:
+        name: git,python-pip
+        state: present
+
+
+    - name: " python docker extension installation"
+      pip:
+        name: docker-py
+
+    - name: " Docker service restart"
+      service:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: " Cloning Repository"
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ repo_dest }}"
+      register: repo_status
+
+
+
+    - name: " Login to remote Repository"
+      docker_login:
+        username: abujan10
+        password: "{{ docker_password }}"
+
+            
+            
+    - name: "Building image"
+      docker_image:
+        source: build
+        build:
+          path: "{{ repo_dest }}/docker/"
+          pull: yes
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+        push: true
+        force_tag: yes
+        force_source: yes
+      with_items:
+        - "{{ repo_status.after }}"
+        - latest
+    
+
+    - name: "removing image"
+      docker_image:
+        state: absent
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+      with_items:
+        - "{{ repo_status.after }}"
+        - latest
+
+
+
+- name: "Docker Run Container"
+  hosts: dev
+  become: true
+  vars:
+    image_name: "abujan10/cdsite"
+    
+  tasks:
+    
+    - name: "Deployment - Docker "
+      shell: 'amazon-linux-extras install docker -y'
+      args:
+        warn: no
+
+            
+    - name: "Deployment - Additional package Installation"
+      yum:
+        name: git,python-pip
+        state: present
+
+
+    - name: "Deployment - python docker extension install"
+      pip:
+        name: docker-py
+
+    - name: "Deployment - Docker service restart"
+      service:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: "Deployment - Run Container"
+      docker_container:
+        name: webserver
+        image: "{{ image_name }}:latest"
+        recreate: yes
+        pull: yes
+        published_ports:
+          - "80:80"
